@@ -1,0 +1,303 @@
+cacheImages(config.assets)
+.then(() => {
+    getCategoriesData()
+    .then((data: Categories) => {
+        const images = getImagesURLs(data);
+        cacheImages( images ).then(() => {
+            setCategories(data);
+            const queryParams = getQueryParams();
+            if ( 'lang' in queryParams ) {
+                handleLanguageSelect(queryParams.lang);
+            }
+            if ( 'category' in queryParams ) {
+                let category = data.find( (category: Category) => category.id === queryParams.category);
+            
+                if ( category ) {
+                    handleCategorySelect(category, queryParams.lang)
+                    .then(() => setIsLoading(false));
+                    return;
+                } 
+            } 
+
+            // Route
+            navigate(`/${lang}/categories`);
+            setIsLoading(false);
+            
+        })
+    });
+})
+
+
+    // Manage load state 
+    const [isLoading, setIsLoading] = useState<Boolean>(true);
+
+    // Manage active language
+    const [lang, setLanguage] = useState<Language>('en');
+ 
+    // Manage active category
+    const [activeCategory, setActiveCategory] = useState<Category|undefined>(undefined);
+
+    // Manage modal open state
+    const [isModalOpened, setModalOpened] = useState<boolean>(false);
+
+    // Store modal data
+    const [modalData, setModalData] = useState<Term | undefined>(undefined);
+
+    // Store available categories
+    const { data: categories, isFetching: isFetchingCategories }: { data?: Category[], isFetching: boolean } =  useQuery(['categories', lang], () => getCategories({locale: lang}), {keepPreviousData: true, staleTime: 3600,});
+
+    // Store current category's terms
+    const [terms, setTerms] = useState<Terms>([]);
+
+    const [pageTitle, setPageTitle] = useState<Translations>(config.translations.categories);
+
+    const setScrollLock = (isActive: boolean) => document.body.style.overflowY = isActive ? document.body.style.overflowY = 'hidden' : 'auto';
+
+    // Manage current route
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    const getQueryParams = (path: Location | undefined = undefined) => {
+        
+        let currentPath = path?.pathname ?? location.pathname;
+
+        currentPath = currentPath.substr(0, 1) === '/' ? currentPath.substr(1, currentPath.length) : currentPath;
+
+        const splittedPath = currentPath.split('/');
+
+        const queryParams: any = {};
+
+        splittedPath.map((value: string, index: number) => {
+            
+            if ( !value ) return;
+
+            switch ( index ) {
+                case 0: 
+                    queryParams.lang = value;
+                    break;
+                case 2:
+                    queryParams.category = Number(value);
+                    break;
+                case 4:
+                    queryParams.term = Number(value);
+                    break;
+            }
+                    
+        })
+
+        return queryParams;
+
+    }
+
+    // Get data from API
+    const getData = async (categoryID: number|undefined = undefined) => {
+        const response = await fetch(`${config.url.api}/categories/${categoryID ? categoryID : ''}`);
+        return await response.json();
+    };
+
+    const cacheImages = async (images: Array<string>, lazyLoadLimit: number = 0) => {
+
+        images = lazyLoadLimit ? images.slice(0, lazyLoadLimit) : images;
+
+        const promises = await images.map((src: string) => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.src = src;
+                img.addEventListener('load', resolve);
+                img.addEventListener('error', reject);
+            });
+        })
+
+        await Promise.all(promises);
+
+        return true;
+
+    }
+
+    const getImagesURLs = (data: Array<Category | Term>) => {
+        return data.map((dataItem: Category | Term) => {
+            return config.getFileURI( dataItem.image );
+        })
+    }
+
+    // Get categories data
+    const getCategoriesData = async () => await getData();
+
+    // Get category's terms data
+    const getCategoryData = async (categoryID: number|undefined = undefined) => await getData(categoryID);
+
+    // Handle term change
+    const handleTermChange = (direction: 'prev' | 'next') => {
+
+        if (!isModalOpened || !modalData) return;
+
+        const actions = {prev: -1, next: 1};
+
+        let currentIndex    = modalData!.id - 1;
+        let nextIndex       = currentIndex + actions[direction];
+
+        // Skip to first
+        if ( nextIndex > (terms.length - 1) ) {
+            nextIndex = 0;
+        }
+
+        // Skip to last
+        if ( nextIndex < 0 ) {
+            nextIndex = (terms.length - 1);
+        }
+
+        navigate(`/${lang}/categories/${activeCategory?.id}/term/${terms[nextIndex]?.id}`);
+        setModalData(terms[nextIndex]);
+        
+    }
+
+    // Handle language select
+    const handleLanguageSelect = async (selectedLang: Language) => {
+        // Route
+        navigate(location.pathname.replace(lang, selectedLang));
+        setLanguage(selectedLang);
+    }
+
+    // Get and show terms of selected category
+    const handleCategorySelect = async (category: Category, customLang: Language | undefined = undefined) => {
+
+        //setPageTitle(category.translations);
+        setActiveCategory(category);
+        
+        // Load already cached category terms data if available
+        // if ( categories[category.id - 1] !== undefined ) {
+        //     if ( 'terms' in categories[category.id - 1] ) {
+        //         // Route
+        //         navigate(`/${customLang ? customLang : lang}/categories/${category.id}`);
+        //         setTerms(categories[category.id - 1].terms);
+        //         setActiveCategory(category);
+        //         return;
+        //     } 
+        // }
+        
+        // Fetch category terms data
+        setIsLoading(true);
+        
+        // Get category's terms data
+        const termsData: Terms = await getCategoryData(category.id);
+        const images = getImagesURLs(termsData);
+        
+        await cacheImages( images, 6 );
+
+        // Set terms, active category and loading state
+        setTerms(termsData);
+        setIsLoading(false);
+
+        // Cache terms data
+        // if ( categories[category.id - 1] !== undefined ) {
+        //     categories[category.id - 1].terms = termsData;
+        // }
+
+        const queryParams = getQueryParams();
+
+        if ( 'term' in queryParams ) {
+            let term = termsData.find( (term: Term) => term.id === queryParams.term);
+            if ( term ) {
+                handleTermSelect(term);
+                return;
+            } 
+        }
+
+        // Route
+        navigate(`/${customLang ? customLang : lang}/categories/${category.id}`);
+
+    }
+
+    // Open modal on term select
+    const handleTermSelect = (term: Term) => {
+        if ( isModalOpened ) return;
+
+        // Route
+        activeCategory?.id && navigate(`/${lang}/categories/${activeCategory?.id}/term/${term?.id}`);
+
+        setModalData(term);
+        setModalOpened(true);
+        setScrollLock(true);
+    }
+    
+    // Close modal if opened
+    const handleCloseModal = (e: Event | undefined = undefined) => {
+        if ( !isModalOpened ) return;
+        
+        if ( e ) {
+            if (e.currentTarget !== e.target) return;
+        }
+
+        // Route
+        navigate(`/${lang}/categories/${activeCategory?.id}`);
+
+        window.navigator.vibrate([50]);
+        setModalData(undefined);
+        setModalOpened(false);
+        setScrollLock(false);
+    }
+
+    // Navigate back to category page
+    const handleNavigateBack = () => {
+
+        // Route
+        navigate(`/${lang}/categories`);
+        
+        window.navigator.vibrate([50]);
+        setActiveCategory(undefined);
+        setIsLoading(false);
+        setPageTitle(config.translations.categories);
+        setTerms([]);
+      }
+
+    useEffect(() => {
+
+        let currentPageTitle: string | undefined = '', 
+            currentPageDescription: string | undefined= '', 
+            currentPageImage: string | undefined = '';
+
+        const defaultTitle = 'Erasmus - Interactive Dictionary';
+        const defaultDescription: string = 'A multilingual interactive dictionary of various interesting things, events and places all around the world from countries like Slovakia, Czech Republic, Turkey and Greece.';
+        const defaultImage = '%PUBLIC_URL%/static/img/logo512.png';
+
+        const openGraphMeta = {
+            title: document.querySelector('head > meta[property="og:title"]'),
+            description: document.querySelector('head > meta[property="og:description"]'),
+            image: document.querySelector('head > meta[property="og:image"]')
+        }
+
+        if ( activeCategory ) {
+
+            //currentPageTitle = config.getTranslation(activeCategory.translations, lang)?.title;
+            currentPageImage = config.getFileURI(activeCategory.image);
+            
+            if ( isModalOpened && modalData ) {
+                currentPageTitle = `${config.getTranslation(modalData.translations, lang)?.title} | ${currentPageTitle}`;
+                currentPageImage = config.getFileURI(modalData.image);
+                currentPageDescription = config.truncate( config.getTranslation(modalData.translations, lang)?.description, 80) 
+            }
+            
+        } else {
+            currentPageTitle = config.getTranslation(config.translations.categories, lang)?.title
+        }
+
+        document.title = `${currentPageTitle} | ${defaultTitle}`
+        
+        openGraphMeta.title?.setAttribute('content', currentPageTitle ? `${currentPageTitle} | ${defaultTitle}` : defaultTitle);
+        openGraphMeta.description?.setAttribute('content', currentPageDescription ? currentPageDescription : defaultDescription);
+        openGraphMeta.image?.setAttribute('content', currentPageImage ? currentPageImage : defaultImage);
+
+    }, [activeCategory, isModalOpened, modalData, lang])
+
+    const prefetchData = async() => {
+
+        //const categories = await getCategoriesData();
+        //setCategories(categories);
+    }
+
+    // Load categories data on app init
+    useEffect(() => { 
+        prefetchData().then(() => {
+            setIsLoading(false)
+        })
+    }, []) 

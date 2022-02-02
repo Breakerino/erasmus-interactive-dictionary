@@ -1,0 +1,89 @@
+services:
+  app:
+    build: ./frontend
+    container_name: ${PROJECT_NAME}_app_${PROJECT_ENV}
+    hostname: ${APP_SERVER_HOST}
+    environment:
+      - APP_SERVER_NAME=${APP_SERVER_NAME}
+      - APP_SERVER_PORT=${APP_SERVER_PORT}
+      - API_BASE_URL=${APP_API_BASE_URL}
+    volumes:
+      - ./frontend:/app
+      - app-modules:/app/node_modules
+      - app-dist:/app/dist
+    networks:
+      - main
+
+  strapi:
+    image: breakerinosk/strapi:4.0.3
+    container_name: ${PROJECT_NAME}_strapi_${PROJECT_ENV}
+    hostname: ${STRAPI_HOST}
+    networks:
+      - main
+      - internal
+    restart: unless-stopped
+    environment:
+      # General
+      - PROJECT_NAME=${PROJECT_NAME}
+      - NODE_ENV=${PROJECT_ENV}
+    
+      # Database
+      - DATABASE_CLIENT=mysql
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USERNAME=${DATABASE_USERNAME}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      
+      # Server
+      - API_SERVER_NAME=${API_SERVER_NAME}
+      - ADMIN_SERVER_NAME=${ADMIN_SERVER_NAME}
+      - ADMIN_SERVER_PROTOCOL=${ADMIN_SERVER_PROTOCOL}
+      - API_SERVER_PROTOCOL=${API_SERVER_PROTOCOL}
+      
+      # Strapi
+      - PUBLIC_URL=${API_SERVER_PROTOCOL}://${API_SERVER_NAME}
+      - PORT=${STRAPI_PORT}
+      - APP_KEYS=${STRAPI_APP_KEYS}
+      - API_TOKEN_SALT=${STRAPI_API_TOKEN_SALT}
+      - ADMIN_JWT_SECRET=${STRAPI_ADMIN_JWT_SECRET}
+    volumes:
+      - ./backend:/srv/app
+      - ~/var/local/${PROJECT_NAME}/public:/srv/app/public:rw
+      - strapi-modules:/srv/app/node_modules
+    depends_on:
+      - database
+
+  database:
+    image: mariadb:latest
+    container_name: ${PROJECT_NAME}_database_${PROJECT_ENV}
+    hostname: ${DATABASE_HOST}
+    restart: unless-stopped
+    networks:
+      - internal
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_DATABASE: ${DATABASE_NAME}
+      MYSQL_USER: ${DATABASE_USERNAME}
+      MYSQL_PASSWORD: ${DATABASE_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DATABASE_PASSWORD}
+      MYSQL_TCP_PORT: ${DATABASE_PORT}
+    volumes:
+      - strapi-database:/var/lib/mysql
+      
+networks:
+  main:
+    external: true
+    name: breakerino_main
+  internal:
+    driver: bridge
+    
+volumes:
+  app-modules:
+    driver: local
+  app-dist:
+    driver: local
+  strapi-modules:
+    driver: local
+  strapi-database:
+    driver: local
