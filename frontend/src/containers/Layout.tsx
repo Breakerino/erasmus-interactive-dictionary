@@ -9,6 +9,9 @@ const Layout: React.FC = () => {
       <main>
         <Outlet />
       </main>
+			<footer className="page-footer">
+				<p>Designed & Developed by <a href="https://breakerino.me" target="_blank">Breakerino<span>.</span></a></p>
+			</footer>
   </>)
 
 }

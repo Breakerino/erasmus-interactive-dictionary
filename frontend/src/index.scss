@@ -1167,3 +1167,27 @@ $i: 0;
 		font-weight: 600;
 	}
 }
+
+.page-footer {
+	display: flex;
+	justify-content: center;
+
+	padding-top: 30px;
+	
+	p {
+		color: white;
+	}
+	
+	a {
+		color: white;
+		text-decoration: none;
+		
+		&:hover {
+			text-decoration: underline;
+		}
+		
+		& > span {
+			color: #4EACFF;
+		}
+	}
+}
